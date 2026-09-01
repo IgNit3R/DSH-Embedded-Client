@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'" />
+  <title>DSH Client Menu</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { color-scheme: dark; }
+    html, body { height: 100%; }
+    body {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      background: #1b1f27;
+      border-bottom: 1px solid #262c36;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      user-select: none;
+      overflow: hidden;
+    }
+    button {
+      appearance: none;
+      border: 1px solid #343b47;
+      background: #232933;
+      color: #c7cdd8;
+      font-size: 12px;
+      line-height: 22px;
+      padding: 0 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #2c3440;
+      border-color: #4c8bf5;
+      color: #fff;
+    }
+    button:active { background: #1f2530; }
+  </style>
+</head>
+<body>
+  <button id="refresh" type="button">刷新当前页面</button>
+  <button id="about" type="button">关于</button>
+</body>
+</html>

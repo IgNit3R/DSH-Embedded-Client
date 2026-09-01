@@ -1,0 +1,45 @@
+{
+  "name": "shell-browser",
+  "version": "0.1.0",
+  "private": true,
+  "author": "Yuuka",
+  "description": "DSH 专用桌面壳：自动启动 @deepseek-ai/dsh web 服务并满铺承载其界面",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "prepack:zip": "node scripts/build-info.js",
+    "pack:zip": "electron-builder --win zip --x64",
+    "prepack:portable": "node scripts/build-info.js",
+    "pack:portable": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "io.github.dsh.shell-browser",
+    "productName": "DSH Client",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!README.md"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "electronDist": "node_modules/electron/dist",
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}

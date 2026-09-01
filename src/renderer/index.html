@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'" />
+  <title>DSH Client</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { color-scheme: dark; }
+    html, body { height: 100%; }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #14161a;
+      color: #9aa3af;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      overflow: hidden;
+    }
+    .box { text-align: center; user-select: none; }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      margin: 0 auto 18px;
+      border: 3px solid #2a2f39;
+      border-top-color: #4c8bf5;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    p { font-size: 14px; letter-spacing: 0.05em; }
+
+    /* ---------- 首装进度日志区（默认隐藏；DOM 由 sandbox preload 驱动） ---------- */
+
+    #boot-log-wrap {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 55%;
+      display: flex;
+      flex-direction: column;
+      background: #10131a;
+      border-top: 1px solid #262c36;
+    }
+    #boot-log-wrap[hidden] { display: none; }
+
+    #boot-log-title {
+      padding: 6px 12px;
+      font-size: 11px;
+      color: #6b7480;
+      border-bottom: 1px solid #20242c;
+      user-select: none;
+    }
+
+    #boot-log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 12px;
+      font: 12px/1.5 Consolas, "Courier New", monospace;
+      color: #8fa1b3;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner"></div>
+    <p>正在启动 DSH 服务…</p>
+  </div>
+
+  <div id="boot-log-wrap" hidden>
+    <div id="boot-log-title">首次安装依赖中，下载进度：</div>
+    <div id="boot-log"></div>
+  </div>
+</body>
+</html>
