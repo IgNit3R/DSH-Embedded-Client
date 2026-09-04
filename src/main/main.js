@@ -22,7 +22,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const http = require('node:http');
 const { StringDecoder } = require('node:string_decoder');
-const { app, BrowserWindow, WebContentsView, dialog } = require('electron');
+const { app, BrowserWindow, WebContentsView, dialog, clipboard } = require('electron');
 const ServiceManager = require('./service-manager');
 
 const APP_ROOT = path.join(__dirname, '..', '..');
@@ -44,6 +44,9 @@ const DSH_SERVICE_SPEC = {
   cwd: SERVICE_CWD,
 };
 const DSH_URL = 'http://127.0.0.1:3080';
+// 新版 DSH 会在启动日志里输出带 ?token= 的 Web 地址，例如：
+// dsh web: http://127.0.0.1:3080/?token=... (LAN: ...)
+const DSH_URL_ANNOUNCE_RE = /dsh web: (https?:\/\/127\.0\.0\.1:\d+\/\?token=[^\s)]+)/;
 const PROBE_INTERVAL_MS = 500;
 const PROBE_TIMEOUT_MS = 180 * 1000; // 首次 npx 需要下载包，放宽到 3 分钟
 const PROBE_REQUEST_TIMEOUT_MS = 3000;
@@ -83,6 +86,10 @@ let dshExitInfo = null;
 let dshErrorMessage = '';
 /** true = 服务由本应用拉起（关闭时负责终止）；false = 附着到外部已运行的服务（退出时不碰它） */
 let ownsService = false;
+/** 从 DSH 启动日志捕获的带 token 的 Web 地址；空 = 尚未捕获或附着外部服务 */
+let dshWebUrl = '';
+/** 当前主内容区实际加载的 URL（用于判断是否显示外部地址栏） */
+let currentPageUrl = '';
 
 // --- 首装进度日志 tail 状态 ---
 /** spawn 前 _logs 目录文件名快照；null = 特性禁用（无 LOCALAPPDATA 或目录不存在） */
@@ -101,6 +108,16 @@ let bootLines = [];
 // DSH 服务管理
 // ---------------------------------------------------------------------------
 
+// 从 DSH 进程输出的 dsh web: http://...?token=... 行里捕获带 token 的地址
+function captureDshWebUrl(line) {
+  if (typeof line !== 'string' || dshWebUrl) return;
+  const match = DSH_URL_ANNOUNCE_RE.exec(line);
+  if (match && match[1]) {
+    dshWebUrl = match[1];
+    console.log('captured');
+  }
+}
+
 const services = new ServiceManager({
   baseDir: APP_ROOT,
   onEvent(event) {
@@ -108,6 +125,7 @@ const services = new ServiceManager({
     switch (event.type) {
       case 'stdout':
       case 'stderr':
+        captureDshWebUrl(event.data);
         console.log(`[dsh-web:${event.type}] ${event.data}`);
         break;
       case 'started':
@@ -409,6 +427,8 @@ function wireContentView(wc) {
   wc.on('render-process-gone', (_e, details) => {
     console.error(`[content] 渲染进程退出: ${details.reason}`);
   });
+  wc.on('did-navigate', (_e, url) => onContentUrlChanged(url));
+  wc.on('did-navigate-in-page', (_e, url) => onContentUrlChanged(url));
 
   // 新开链接一律在当前视图内打开，不弹新窗口
   wc.setWindowOpenHandler(({ url }) => {
@@ -420,6 +440,42 @@ function wireContentView(wc) {
   // 默认拒绝所有权限申请（摄像头/麦克风/通知等），后续按需求放开
   // 注意：权限处理器挂在 session 上，而不是 webContents 上
   wc.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+}
+
+function isDshLocalUrl(url) {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    const host = u.hostname;
+    return u.protocol === 'http:'
+      && (host === '127.0.0.1' || host === 'localhost' || host === '[::1]' || host === '::1')
+      && (u.port === '' || u.port === '3080');
+  } catch {
+    return false;
+  }
+}
+
+function shouldShowAddressBar(url) {
+  if (!url || isDshLocalUrl(url)) return false;
+  // 内置 loading 页是本地 file://，不当作“外部页面”
+  if (url.startsWith('file://')) return false;
+  try {
+    const u = new URL(url);
+    return u.protocol !== 'about:';
+  } catch {
+    return false;
+  }
+}
+
+function onContentUrlChanged(url) {
+  currentPageUrl = url || '';
+  updateMenuAddressBar();
+}
+
+function updateMenuAddressBar() {
+  if (!menuView || menuView.webContents.isDestroyed()) return;
+  const show = Boolean(menuVisible && shouldShowAddressBar(currentPageUrl));
+  menuView.webContents.send('menu:address', { show, url: show ? currentPageUrl : '' });
 }
 
 /** 主内容区 / 菜单栏共用的键盘处理：F10 开关菜单栏，Esc 退出无边框满屏。 */
@@ -439,10 +495,13 @@ function handleKeyInput(event, input) {
 
 function wireMenuView(wc) {
   wc.on('ipc-message', (_event, channel) => {
-    if (channel === 'menu:refresh') refreshCurrentPage();
+    if (channel === 'menu:home') navigateHome();
+    else if (channel === 'menu:refresh') refreshCurrentPage();
     else if (channel === 'menu:about') void showAbout();
+    else if (channel === 'menu:copy-url') copyCurrentUrl();
   });
   wc.on('before-input-event', handleKeyInput);
+  wc.on('did-finish-load', () => updateMenuAddressBar());
 }
 
 function toggleMenuBar() {
@@ -450,6 +509,7 @@ function toggleMenuBar() {
   menuVisible = !menuVisible;
   menuView.setVisible(menuVisible);
   layoutContentView();
+  updateMenuAddressBar();
 }
 
 function refreshCurrentPage() {
@@ -460,6 +520,21 @@ function refreshCurrentPage() {
   } catch {
     // 忽略刷新过程中的瞬时异常
   }
+}
+
+function navigateHome() {
+  try {
+    if (contentView && !contentView.webContents.isDestroyed()) {
+      void contentView.webContents.loadURL(DSH_URL);
+    }
+  } catch {
+    // 忽略导航过程中的瞬时异常
+  }
+}
+
+function copyCurrentUrl() {
+  const url = currentPageUrl || dshWebUrl || DSH_URL;
+  if (url) clipboard.writeText(url);
 }
 
 function getBuildInfo() {
@@ -708,7 +783,7 @@ function focusMainWindow() {
 /** 导航到 DSH 页面；失败（且非用户主动退出）弹错误框。 */
 async function navigateToDsh() {
   try {
-    await contentView.webContents.loadURL(DSH_URL);
+    await contentView.webContents.loadURL(dshWebUrl || DSH_URL);
   } catch (err) {
     if (!forceQuit) {
       await showFatalError(`DSH 页面加载失败：${err instanceof Error ? err.message : String(err)}`);
@@ -742,6 +817,13 @@ async function bootstrap() {
   if (!outcome.ok) {
     await showFatalError(outcome.detail);
     return;
+  }
+  // 新版 DSH 会在 stdout 里打印带 token 的 Web 地址；自己拉起服务时等一小段日志
+  if (ownsService && !dshWebUrl) {
+    const tokenWaitDeadline = Date.now() + 5000;
+    while (Date.now() < tokenWaitDeadline && !dshWebUrl && isContentAlive()) {
+      await delay(100);
+    }
   }
   if (!isContentAlive()) return; // 等待期间窗口已被关闭
   await navigateToDsh();
