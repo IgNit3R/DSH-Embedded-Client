@@ -1,6 +1,6 @@
 {
   "name": "shell-browser",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "author": "Yuuka",
   "description": "DSH 专用桌面壳：自动启动 @deepseek-ai/dsh web 服务并满铺承载其界面",
