@@ -104,7 +104,7 @@ dist\
 ## 项目结构
 
 ```
-shell-browser/
+DSH-Embedded-Client/
 ├─ package.json
 ├─ scripts/
 │  ├─ build-info.js             # 生成构建信息
